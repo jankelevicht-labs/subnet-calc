@@ -4,13 +4,15 @@
 Outil en ligne de commande qui découpe un réseau IPv4 en notation CIDR
 soit en un nombre N de sous-réseaux de taille égale (N puissance de 2,
 option ``-n``), soit en sous-réseaux d'un masque cible donné (option
-``-m``), et affiche pour chaque sous-réseau son adresse CIDR, son masque
-décimal, sa plage d'hôtes utilisable et son adresse de broadcast, au
-format texte (défaut) ou JSON (``-f json``).
+``-m``), soit en un sous-réseau par besoin en hôtes, alloués du plus
+grand au plus petit (mode VLSM, option ``--vlsm``), et affiche pour
+chaque sous-réseau son adresse CIDR, son masque décimal, sa plage
+d'hôtes utilisable et son adresse de broadcast, au format texte
+(défaut) ou JSON (``-f json``).
 
 Usage (SPEC.md §2.2) ::
 
-    python3 subnet_calc.py NETWORK [-n COUNT | -m MASK] [-f {text,json}]
+    python3 subnet_calc.py NETWORK [-n COUNT | -m MASK | --vlsm BESOINS] [-f {text,json}]
 
 Le nom commercial de la commande est ``subnet-calc`` : c'est lui
 qu'affichent l'usage et l'aide (SPEC.md §2.1), quelle que soit la façon
@@ -93,7 +95,7 @@ def _entier_ou_erreur(texte, option):
     """Convertit ``texte`` en ``int`` ; lève :class:`ErreurEntree` sinon.
 
     Args:
-        texte: valeur brute de l'option (``-n`` ou ``-m``).
+        texte: valeur brute de l'option (``-n``, ``-m`` ou ``--vlsm``).
         option: libellé de l'option pour le message d'erreur.
 
     Returns:
@@ -107,37 +109,87 @@ def _entier_ou_erreur(texte, option):
         )
 
 
-def valider_options(count, mask, format_sortie):
+def parse_besoins(texte):
+    """Analyse la valeur de ``--vlsm`` en liste de besoins (SPEC.md §3.3).
+
+    Args:
+        texte: valeur brute de l'option ``--vlsm`` (chaîne).
+
+    Returns:
+        La liste des besoins, entiers strictement positifs, dans l'ordre
+        fourni (le tri d'allocation est effectué plus tard).
+
+    Raises:
+        ErreurEntree: valeur vide, token non entier ou entier <= 0
+            (code de sortie 1, SPEC.md §3.2 et §3.3).
+    """
+    valeur = texte.strip()
+    if not valeur:
+        raise ErreurEntree(
+            "--vlsm attend une liste de besoins en hôtes, ex. 50,20,10"
+        )
+    besoins = []
+    for token in valeur.split(","):
+        token = token.strip()
+        if not token:
+            raise ErreurEntree(
+                "--vlsm attend une liste d'entiers séparés par des "
+                "virgules, « %s » fourni" % texte
+            )
+        besoin = _entier_ou_erreur(token, "--vlsm")
+        if besoin <= 0:
+            raise ErreurEntree(
+                "--vlsm : chaque besoin doit être un entier positif, "
+                "« %s » fourni" % token
+            )
+        besoins.append(besoin)
+    return besoins
+
+
+def valider_options(count, mask, vlsm, format_sortie):
     """Valide la cohérence des options et normalise le mode de découpage.
 
-    Ordre des contrôles (SPEC.md §3.2) : exclusivité ``-n``/``-m``,
-    présence d'un mode, choix du format, puis type et domaine de la
-    valeur du mode choisi. Les erreurs de conversion/choix sont
-    volontairement détectées ici et non par argparse, afin que la
+    Ordre des contrôles (SPEC.md §3.2) : exclusivité ``-n``/``-m``/
+    ``--vlsm``, présence d'un mode, choix du format, puis type et
+    domaine de la valeur du mode choisi. Les erreurs de conversion/choix
+    sont volontairement détectées ici et non par argparse, afin que la
     validation de ``NETWORK`` (§3.2) soit toujours signalée en premier.
 
     Args:
         count: valeur brute de ``-n/--count`` (chaîne) ou ``None``.
         mask: valeur brute de ``-m/--mask`` (chaîne) ou ``None``.
+        vlsm: valeur brute de ``--vlsm`` (chaîne) ou ``None``.
         format_sortie: valeur de ``-f/--format``.
 
     Returns:
-        Un tuple ``(genre, valeur)`` : ``("count", N)`` ou
-        ``("mask", P)`` avec ``valeur`` un ``int``.
+        Un tuple ``(genre, valeur)`` : ``("count", N)``, ``("mask", P)``
+        ou ``("vlsm", besoins)`` — ``valeur`` étant un ``int`` pour les
+        deux premiers modes et la liste des besoins (entiers) pour le
+        mode VLSM.
 
     Raises:
-        ErreurEntree: options inconnues côté valeurs, ``-n`` et ``-m``
-            fournis ensemble, ni ``-n`` ni ``-m`` fourni, ``COUNT`` non
-            entier / non puissance de 2 / <= 0, ``MASK`` non entier ou
-            hors [1, 32], format de sortie invalide (code de sortie 1).
+        ErreurEntree: options inconnues côté valeurs, plusieurs modes
+            fournis ensemble, aucun mode fourni, ``COUNT`` non entier /
+            non puissance de 2 / <= 0, ``MASK`` non entier ou hors
+            [1, 32], ``BESOINS`` mal formé (vide, token non entier ou
+            entier <= 0), format de sortie invalide (code de sortie 1).
     """
     if count is not None and mask is not None:
         raise ErreurEntree(
             "les options -n/--count et -m/--mask sont mutuellement exclusives"
         )
-    if count is None and mask is None:
+    if count is not None and vlsm is not None:
         raise ErreurEntree(
-            "aucun mode de découpage fourni : utiliser -n/--count ou -m/--mask"
+            "les options -n/--count et --vlsm sont mutuellement exclusives"
+        )
+    if mask is not None and vlsm is not None:
+        raise ErreurEntree(
+            "les options -m/--mask et --vlsm sont mutuellement exclusives"
+        )
+    if count is None and mask is None and vlsm is None:
+        raise ErreurEntree(
+            "aucun mode de découpage fourni : utiliser -n/--count, "
+            "-m/--mask ou --vlsm"
         )
     if format_sortie not in FORMATS:
         raise ErreurEntree(
@@ -153,12 +205,14 @@ def valider_options(count, mask, format_sortie):
                 "« %s » fourni" % count
             )
         return ("count", nombre)
-    prefixe = _entier_ou_erreur(mask, "-m/--mask")
-    if not 1 <= prefixe <= 32:
-        raise ErreurEntree(
-            "-m/--mask doit être compris entre 1 et 32, « %s » fourni" % mask
-        )
-    return ("mask", prefixe)
+    if mask is not None:
+        prefixe = _entier_ou_erreur(mask, "-m/--mask")
+        if not 1 <= prefixe <= 32:
+            raise ErreurEntree(
+                "-m/--mask doit être compris entre 1 et 32, « %s » fourni" % mask
+            )
+        return ("mask", prefixe)
+    return ("vlsm", parse_besoins(vlsm))
 
 
 def planifier_decoupage(prefixe_source, mode):
@@ -167,7 +221,7 @@ def planifier_decoupage(prefixe_source, mode):
     Args:
         prefixe_source: préfixe ``P`` du réseau source (0–32).
         mode: couple ``(genre, valeur)`` produit par
-            :func:`valider_options`.
+            :func:`valider_options` (modes ``-n``/``-m``).
 
     Returns:
         Un tuple ``(nouveau_prefixe, total)`` : préfixe des sous-réseaux
@@ -190,6 +244,49 @@ def planifier_decoupage(prefixe_source, mode):
         nouveau_prefixe = valeur
         total = 1 << (nouveau_prefixe - prefixe_source)
     return nouveau_prefixe, total
+
+
+def planifier_vlsm(reseau, besoins):
+    """Alloue un sous-réseau par besoin en hôtes (mode VLSM, SPEC.md §3.3).
+
+    Les besoins sont traités en ordre décroissant et les blocs sont
+    alloués séquentiellement depuis la première adresse du réseau
+    source ; l'alignement est garanti par construction (somme de
+    puissances de 2 depuis la base du réseau), donc aucun chevauchement
+    n'est possible.
+
+    Args:
+        reseau: :class:`ipaddress.IPv4Network` du réseau source.
+        besoins: liste d'entiers strictement positifs (hôtes souhaités).
+
+    Returns:
+        La liste des :class:`ipaddress.IPv4Network` alloués, en ordre
+        d'allocation (besoin le plus grand d'abord, SPEC.md §4.3).
+
+    Raises:
+        DecoupageImpossible: un bloc ne tient plus dans le réseau source
+            (``curseur + taille > fin``) ou un besoin excède 2^30 - 2
+            hôtes, taille au-delà de tout bloc IPv4 — code de sortie 2,
+            SPEC.md §3.2 et §3.3.
+    """
+    debut = int(reseau.network_address)
+    fin = debut + reseau.num_addresses
+    curseur = debut
+    sous_reseaux = []
+    for besoin in sorted(besoins, reverse=True):
+        # P = 32 - ⌈log2(B + 2)⌉ : le plus petit bloc dont les hôtes
+        # utilisables 2^(32-P) - 2 couvrent B. ⌈log2(x)⌉ se calcule en
+        # arithmétique exacte (pas de flottant) par (x - 1).bit_length().
+        prefixe = 32 - (besoin + 1).bit_length()
+        if prefixe < 0:
+            # B > 2^30 - 2 : même un /0 ne suffirait pas.
+            raise DecoupageImpossible("découpage impossible")
+        taille = 1 << (32 - prefixe)
+        if curseur + taille > fin:
+            raise DecoupageImpossible("découpage impossible")
+        sous_reseaux.append(ipaddress.IPv4Network((curseur, prefixe)))
+        curseur += taille
+    return sous_reseaux
 
 
 # ---------------------------------------------------------------------------
@@ -263,12 +360,13 @@ def fiche_json(reseau):
 def ecrire_texte(sous_reseaux, total, source, flux):
     """Écrit les résultats au format texte (SPEC.md §4.1).
 
-    En-tête puis une ligne par sous-réseau, ordre croissant ; l'écriture
-    est en flux (aucune matérialisation de la liste, utile pour les très
-    grands découpages).
+    En-tête puis une ligne par sous-réseau, dans l'ordre fourni
+    (croissant pour les modes ``-n``/``-m``, ordre d'allocation pour le
+    mode ``--vlsm``, SPEC.md §4.3) ; l'écriture est en flux (aucune
+    matérialisation de la liste, utile pour les très grands découpages).
 
     Args:
-        sous_reseaux: itérateur des sous-réseaux (ordre croissant).
+        sous_reseaux: itérateur des sous-réseaux, dans l'ordre de sortie.
         total: nombre de sous-réseaux (l'en-tête l'annonce).
         source: réseau source (affiché dans l'en-tête).
         flux: flux de sortie (stdout).
@@ -284,11 +382,13 @@ def ecrire_json(sous_reseaux, flux):
     Construction incrémentale (aucune matérialisation de la liste) au
     format exact de l'exemple §4.2 : structure indentée de 2 espaces,
     clés indentées de 4, et ``plage_hotes`` en tableau « inline » sur une
-    seule ligne (``["a", "b"]``), ce que ne produit pas
+    seule ligne (``[\"a\", \"b\"]``), ce que ne produit pas
     ``json.dumps(..., indent=2)`` qui éclaterait le tableau.
 
     Args:
-        sous_reseaux: itérateur des sous-réseaux (ordre croissant).
+        sous_reseaux: itérateur des sous-réseaux, dans l'ordre de sortie
+            (croissant pour ``-n``/``-m``, ordre d'allocation pour
+            ``--vlsm``, SPEC.md §4.3).
         flux: flux de sortie (stdout).
     """
     flux.write("[\n")
@@ -372,30 +472,36 @@ def build_parser():
 
     Returns:
         Un :class:`_ParserSpec` prêt à recevoir
-        ``NETWORK [-n COUNT | -m MASK] [-f {text,json}]``.
+        ``NETWORK [-n COUNT | -m MASK | --vlsm BESOINS] [-f {text,json}]``.
 
     Note:
-        ``-n`` et ``-m`` sont volontairement lus comme des chaînes (pas
-        ``type=int``) et ``-f`` sans ``choices`` : la SPEC §3.2 impose
-        l'ordre « validation de NETWORK → cohérence des options », or
-        argparse convertirait pendant l'analyse, avant tout contrôle du
-        réseau. La conversion est donc déléguée à
+        ``-n``, ``-m`` et ``--vlsm`` sont volontairement lus comme des
+        chaînes (pas ``type=int``) et ``-f`` sans ``choices`` : la SPEC
+        §3.2 impose l'ordre « validation de NETWORK → cohérence des
+        options », or argparse convertirait pendant l'analyse, avant
+        tout contrôle du réseau. La conversion est donc déléguée à
         :func:`valider_options`.
     """
     parser = _ParserSpec(
         prog=PROG,
-        usage="%(prog)s [-h] [-n COUNT | -m MASK] [-f {text,json}] NETWORK",
+        usage=(
+            "%(prog)s [-h] [-n COUNT | -m MASK | --vlsm BESOINS] "
+            "[-f {text,json}] NETWORK"
+        ),
         description=(
-            "Découpe un réseau IPv4 (notation CIDR stricte) en sous-réseaux "
-            "de taille égale : soit un nombre N de sous-réseaux (N puissance "
-            "de 2, -n), soit un masque cible donné (-m), et affiche pour "
-            "chacun son CIDR, son masque, sa plage d'hôtes et son broadcast."
+            "Découpe un réseau IPv4 (notation CIDR stricte) en sous-réseaux : "
+            "soit un nombre N de sous-réseaux de taille égale (N puissance "
+            "de 2, -n), soit un masque cible donné (-m), soit un sous-réseau "
+            "par besoin en hôtes, alloué du plus grand au plus petit "
+            "(--vlsm), et affiche pour chacun son CIDR, son masque, sa "
+            "plage d'hôtes et son broadcast."
         ),
         epilog=(
             "Exemples :\n"
             "  subnet-calc 192.168.1.0/24 -n 2\n"
             "  subnet-calc 10.0.0.0/16 --count 8\n"
             "  subnet-calc 192.168.1.0/24 -m 26\n"
+            "  subnet-calc 192.168.1.0/24 --vlsm 50,20,10\n"
             "  subnet-calc 192.168.1.0/24 -n 4 --format json"
         ),
     )
@@ -408,14 +514,22 @@ def build_parser():
         "-n", "--count",
         metavar="COUNT", default=None,
         help="nombre de sous-réseaux de taille égale, puissance de 2 "
-             "(1, 2, 4, 8, …) — exclusif avec -m",
+             "(1, 2, 4, 8, …) — exclusif avec -m et --vlsm",
     )
     parser.add_argument(
         "-m", "--mask",
         metavar="MASK", default=None,
         help="longueur du préfixe cible des sous-réseaux, ex. 26 pour des "
              "/26 (strictement supérieure au préfixe de NETWORK, 32 au "
-             "plus) — exclusif avec -n",
+             "plus) — exclusif avec -n et --vlsm",
+    )
+    parser.add_argument(
+        "--vlsm",
+        metavar="BESOINS", default=None,
+        help="liste de besoins en hôtes séparés par des virgules, ex. "
+             "50,20,10 : un sous-réseau par besoin, alloué du plus grand "
+             "au plus petit depuis la première adresse de NETWORK — "
+             "exclusif avec -n et -m",
     )
     parser.add_argument(
         "-f", "--format",
@@ -465,8 +579,18 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
         reseau = parse_reseau(args.network)
-        mode = valider_options(args.count, args.mask, args.format)
-        nouveau_prefixe, total = planifier_decoupage(reseau.prefixlen, mode)
+        mode = valider_options(args.count, args.mask, args.vlsm, args.format)
+        if mode[0] == "vlsm":
+            # Mode VLSM : les sous-réseaux sont produits en ordre
+            # d'allocation, besoin le plus grand d'abord (SPEC §4.3).
+            sous_reseaux = planifier_vlsm(reseau, mode[1])
+            total = len(sous_reseaux)
+        else:
+            nouveau_prefixe, total = planifier_decoupage(reseau.prefixlen, mode)
+            # ``subnets(new_prefix=P)`` renvoie le réseau lui-même quand P
+            # est égal au préfixe source (cas -n 1), et itère en ordre
+            # croissant.
+            sous_reseaux = reseau.subnets(new_prefix=nouveau_prefixe)
     except ErreurEntree as exc:
         print("Erreur : %s" % exc, file=sys.stderr)
         return CODE_ENTREE_INVALIDE
@@ -474,9 +598,6 @@ def main(argv=None):
         print("Erreur : %s" % exc, file=sys.stderr)
         return CODE_DECOUPAGE_IMPOSSIBLE
 
-    # ``subnets(new_prefix=P)`` renvoie le réseau lui-même quand P est
-    # égal au préfixe source (cas -n 1), et itère en ordre croissant.
-    sous_reseaux = reseau.subnets(new_prefix=nouveau_prefixe)
     if args.format == "json":
         ecrire_json(sous_reseaux, sys.stdout)
     else:
