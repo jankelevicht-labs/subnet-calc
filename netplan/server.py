@@ -18,6 +18,7 @@ import json
 import os
 import socket
 import sys
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote
@@ -27,7 +28,7 @@ from . import calc, export
 TAILLE_MAX_CORPS = 64 * 1024          # 64 Kio
 TAILLE_MAX_DRAIN = 1024 * 1024        # octets lus et jetés avant de répondre à un corps trop gros
 DELAI_SOCKET = 10                     # secondes (client lent / connexion muette)
-DELAI_DRAIN = 0.5                     # secondes d'inactivité tolérées en jetant un corps trop gros
+DUREE_MAX_DRAIN = 1.0                 # secondes au total (échéance absolue) pour jeter un corps trop gros
 DOSSIER_STATIQUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 TYPES_STATIQUES = {
@@ -65,11 +66,12 @@ MESSAGES_HTTP = {
 class ErreurRequete(Exception):
     """Erreur HTTP à renvoyer au client (message en français, sans trace)."""
 
-    def __init__(self, statut, message, entetes=()):
+    def __init__(self, statut, message, entetes=(), a_jeter=0):
         super().__init__(message)
         self.statut = statut
         self.message = message
         self.entetes = tuple(entetes)
+        self.a_jeter = a_jeter        # octets de corps annoncés à drainer (bornés) après l'envoi
 
 
 # --------------------------------------------------------------------------- #
@@ -234,6 +236,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 self._statique(chemin)
         except ErreurRequete as exc:
             self._envoyer_erreur(exc.statut, exc.message, exc.entetes)
+            if exc.a_jeter:                       # drainage borné, uniquement après l'envoi du rejet
+                self._jeter_corps(exc.a_jeter)
         except (BrokenPipeError, ConnectionResetError, socket.timeout, TimeoutError):
             self.close_connection = True
         except Exception:                                  # jamais de trace dans la réponse
@@ -260,25 +264,39 @@ class Gestionnaire(BaseHTTPRequestHandler):
             raise ErreurRequete(400, "En-tête Content-Length invalide : un entier positif est attendu.")
         longueur = int(brut)
         if longueur > TAILLE_MAX_CORPS:
-            self._jeter_corps(longueur)
-            raise ErreurRequete(400, f"Corps de requête trop volumineux : {TAILLE_MAX_CORPS // 1024} Kio au maximum.")
+            # Rejet immédiat : aucun octet du corps n'est lu avant l'envoi du 400. Le drainage
+            # éventuel (pour que le client puisse lire la réponse) a lieu APRÈS l'envoi.
+            raise ErreurRequete(400, f"Corps de requête trop volumineux : {TAILLE_MAX_CORPS // 1024} Kio au maximum.",
+                                a_jeter=longueur)
         corps = self.rfile.read(longueur) if longueur else b""
         if len(corps) < longueur:
             raise ErreurRequete(400, "Corps de requête incomplet : moins d'octets reçus que Content-Length.")
         return corps
 
     def _jeter_corps(self, longueur):
-        """Lit (sans le garder) un corps trop gros pour que le client puisse lire la réponse 400."""
+        """Après l'envoi du 400, lit et jette un corps trop gros (fermer sur des octets non lus
+        provoquerait un RST qui peut effacer la réponse côté client).
+
+        Borné en octets (``TAILLE_MAX_DRAIN``) et en durée TOTALE (``DUREE_MAX_DRAIN``, échéance
+        absolue, pas un simple délai d'inactivité). Renvoie le nombre d'octets jetés."""
         restant = min(longueur, TAILLE_MAX_DRAIN)
+        jetes = 0
+        echeance = time.monotonic() + DUREE_MAX_DRAIN
+        lire = getattr(self.rfile, "read1", self.rfile.read)   # read1 : au plus une lecture système
         try:
-            self.connection.settimeout(DELAI_DRAIN)      # un client qui n'envoie plus rien n'est pas attendu
             while restant > 0:
-                morceau = self.rfile.read(min(restant, 65536))
+                reste_temps = echeance - time.monotonic()
+                if reste_temps <= 0:
+                    break
+                self.connection.settimeout(reste_temps)
+                morceau = lire(min(restant, 65536))
                 if not morceau:
                     break
                 restant -= len(morceau)
+                jetes += len(morceau)
         except (OSError, ValueError):
             pass
+        return jetes
 
     def _api(self, chemin):
         donnees = decoder_json(self._lire_corps())

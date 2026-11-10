@@ -44,6 +44,17 @@ class NetplanError(ValueError):
 # Utilitaires internes
 # --------------------------------------------------------------------------- #
 
+LONGUEUR_MAX_EXTRAIT = 60
+
+
+def _extrait(texte):
+    """Texte saisi recopié dans un message d'erreur : tronqué pour que la réponse reste courte."""
+    texte = str(texte)
+    if len(texte) > LONGUEUR_MAX_EXTRAIT:
+        return texte[:LONGUEUR_MAX_EXTRAIT] + "…"
+    return texte
+
+
 def _reseau(valeur, nom="réseau"):
     """Analyse un CIDR ``a.b.c.d/p`` (bits d'hôte tolérés) et renvoie
     ``(adresse, IPv4Network)``. Le préfixe est obligatoire et doit être un
@@ -55,16 +66,16 @@ def _reseau(valeur, nom="réseau"):
         raise NetplanError(f"Le {nom} est vide : saisissez un CIDR, par exemple 192.168.1.0/24.")
     if "/" not in texte:
         raise NetplanError(
-            f"Le {nom} « {texte} » n'a pas de préfixe : ajoutez /0 à /32, par exemple 192.168.1.0/24.")
+            f"Le {nom} « {_extrait(texte)} » n'a pas de préfixe : ajoutez /0 à /32, par exemple 192.168.1.0/24.")
     adr_txt, _, pref_txt = texte.partition("/")
     try:
         adresse = ipaddress.IPv4Address(adr_txt)
     except ValueError:
         raise NetplanError(
-            f"Le {nom} « {texte} » est invalide : « {adr_txt} » n'est pas une adresse IPv4 correcte.") from None
+            f"Le {nom} « {_extrait(texte)} » est invalide : « {_extrait(adr_txt)} » n'est pas une adresse IPv4 correcte.") from None
     if not (pref_txt.isascii() and pref_txt.isdigit()):
         raise NetplanError(
-            f"Préfixe incohérent dans « {texte} » : « {pref_txt} » n'est pas un entier entre 0 et 32.")
+            f"Préfixe incohérent dans « {_extrait(texte)} » : « {_extrait(pref_txt)} » n'est pas un entier entre 0 et 32.")
     # Garde-fou avant int() : Python refuse (ValueError natif, en anglais) de convertir plus de
     # 4300 chiffres. Un préfixe valide tient en 2 chiffres (zéros initiaux tolérés) : au-delà de
     # 6 chiffres significatifs on rejette sans recopier le texte saisi.
@@ -75,7 +86,7 @@ def _reseau(valeur, nom="réseau"):
             "attendu un entier entre 0 et 32.")
     prefixe = int(significatifs or "0")
     if prefixe > 32:
-        raise NetplanError(f"Préfixe incohérent dans « {texte} » : /{prefixe} dépasse /32.")
+        raise NetplanError(f"Préfixe incohérent dans « {_extrait(texte)} » : /{prefixe} dépasse /32.")
     return adresse, ipaddress.IPv4Network((adresse, prefixe), strict=False)
 
 
@@ -86,7 +97,7 @@ def _adresse(valeur, nom="adresse IP"):
     try:
         return ipaddress.IPv4Address(texte)
     except ValueError:
-        raise NetplanError(f"L'{nom} « {texte} » est invalide : attendu une adresse IPv4 comme 192.168.1.10.") from None
+        raise NetplanError(f"L'{nom} « {_extrait(texte)} » est invalide : attendu une adresse IPv4 comme 192.168.1.10.") from None
 
 
 def _entier(valeur, nom):
@@ -167,10 +178,10 @@ def _valider_besoins(besoins):
             raise NetplanError(f"Le besoin n° {i} n'a pas de nom : le nom ne peut pas être vide.")
         hotes = b.get("hotes")
         if isinstance(hotes, bool) or not isinstance(hotes, int):
-            raise NetplanError(f"Le besoin « {nom.strip()} » : le nombre d'hôtes doit être un entier.")
+            raise NetplanError(f"Le besoin « {_extrait(nom.strip())} » : le nombre d'hôtes doit être un entier.")
         if hotes <= 0:
             raise NetplanError(
-                f"Le besoin « {nom.strip()} » : le nombre d'hôtes doit être strictement positif (reçu {hotes}).")
+                f"Le besoin « {_extrait(nom.strip())} » : le nombre d'hôtes doit être strictement positif (reçu {hotes}).")
         resultat.append((nom.strip(), hotes))
     return resultat
 
@@ -203,7 +214,7 @@ def vlsm(parent, besoins):
         p = _prefixe_pour_hotes(hotes)
         if p is None or p < reseau_parent.prefixlen:
             raise NetplanError(
-                f"Besoins impossibles : « {nom} » ({hotes} hôtes) ne tient pas dans {reseau_parent}.")
+                f"Besoins impossibles : « {_extrait(nom)} » ({hotes} hôtes) ne tient pas dans {reseau_parent}.")
         blocs.append((nom, hotes, p))
         total += 1 << (32 - p)
     if total > reseau_parent.num_addresses:
