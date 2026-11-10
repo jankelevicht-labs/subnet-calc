@@ -1,0 +1,351 @@
+/* NetPlan Studio – feuille de style (aucune ressource externe : polices système uniquement, aucune importation). */
+
+:root {
+  color-scheme: light dark;
+  --fond: #f4f6fa;
+  --carte: #ffffff;
+  --texte: #1b2433;
+  --texte-doux: #5a6579;
+  --bord: #d3d9e4;
+  --accent: #1f5fbf;
+  --accent-texte: #ffffff;
+  --erreur-fond: #fde8e8;
+  --erreur-texte: #8a1c1c;
+  --erreur-bord: #e49a9a;
+  --ok: #17703a;
+  --ko: #a23a12;
+  --libre-fond: #eef1f6;
+  --libre-trait: #b6c0d1;
+  --reseau-bit: #1f5fbf;
+  --hote-bit: #66728a;
+  --c0: #2563a8;
+  --c1: #1e7a52;
+  --c2: #a9560b;
+  --c3: #7e4bb5;
+  --c4: #b83a55;
+  --c5: #1f7a89;
+  --police: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Thèmes : le thème du système (prefers-color-scheme) s'applique par défaut ; l'attribut data-theme de
+ * <html>, posé par theme.js d'après le bouton de bascule, force « light » ou « dark ».
+ * Les deux blocs sombres ci-dessous sont identiques (un test le vérifie). */
+:root[data-theme="light"] { color-scheme: light; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fond: #11161f;
+    --carte: #1a212d;
+    --texte: #e6ebf3;
+    --texte-doux: #9aa6ba;
+    --bord: #323d50;
+    --accent: #5b9bf0;
+    --accent-texte: #0b1220;
+    --erreur-fond: #3a1a1c;
+    --erreur-texte: #ffb3b3;
+    --erreur-bord: #7a3a3d;
+    --ok: #5fd08a;
+    --ko: #ff9f6b;
+    --libre-fond: #232c3b;
+    --libre-trait: #4a566b;
+    --reseau-bit: #7db3ff;
+    --hote-bit: #8793a8;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --fond: #11161f;
+  --carte: #1a212d;
+  --texte: #e6ebf3;
+  --texte-doux: #9aa6ba;
+  --bord: #323d50;
+  --accent: #5b9bf0;
+  --accent-texte: #0b1220;
+  --erreur-fond: #3a1a1c;
+  --erreur-texte: #ffb3b3;
+  --erreur-bord: #7a3a3d;
+  --ok: #5fd08a;
+  --ko: #ff9f6b;
+  --libre-fond: #232c3b;
+  --libre-trait: #4a566b;
+  --reseau-bit: #7db3ff;
+  --hote-bit: #8793a8;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--texte);
+  font-family: var(--police);
+  font-size: 1rem;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+
+/* Lien d'évitement : visible uniquement au focus clavier */
+.lien-evitement {
+  position: absolute;
+  left: 0.5rem;
+  top: 0;
+  z-index: 10;
+  padding: 0.5rem 0.9rem;
+  background: var(--accent);
+  color: var(--accent-texte);
+  border-radius: 0 0 8px 8px;
+  font-weight: 600;
+  transform: translateY(-120%);
+}
+.lien-evitement:focus-visible { transform: translateY(0); }
+main:focus { outline: none; }
+
+.entete-haut { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
+
+.entete {
+  padding: 1.5rem 1rem 0.75rem;
+  max-width: 64rem;
+  margin: 0 auto;
+}
+.entete h1 { margin: 0; font-size: 1.9rem; }
+.sous-titre { margin: 0.25rem 0 0.75rem; color: var(--texte-doux); }
+
+.navigation { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; margin: 0; padding: 0; }
+.navigation a {
+  display: inline-block;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--bord);
+  border-radius: 999px;
+  background: var(--carte);
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.navigation a:hover, .navigation a:focus-visible { border-color: var(--accent); }
+
+main { max-width: 64rem; margin: 0 auto; padding: 0 1rem 2rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+
+.carte {
+  background: var(--carte);
+  border: 1px solid var(--bord);
+  border-radius: 12px;
+  padding: 1.25rem;
+  min-width: 0;
+}
+.carte h2 { margin: 0 0 0.5rem; font-size: 1.35rem; }
+.carte h3 { margin: 1.25rem 0 0.4rem; font-size: 1.05rem; }
+
+.aide { color: var(--texte-doux); margin: 0.25rem 0 0.75rem; font-size: 0.95rem; }
+
+code, .mono { font-family: var(--mono); }
+code { background: var(--libre-fond); padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.9em; }
+
+/* ------------------------------------------------------------- formulaires */
+
+form { display: grid; gap: 0.75rem; }
+.champ { display: grid; gap: 0.25rem; }
+label { font-weight: 600; font-size: 0.95rem; }
+
+input, textarea, select {
+  width: 100%;
+  font: inherit;
+  font-family: var(--mono);
+  color: var(--texte);
+  background: var(--fond);
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+}
+select { font-family: var(--police); }
+textarea { resize: vertical; min-height: 4.5rem; }
+input:focus-visible, textarea:focus-visible, select:focus-visible,
+button:focus-visible, a:focus-visible, .tableau-defilant:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+button {
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-texte);
+  background: var(--accent);
+  border: 0;
+  border-radius: 8px;
+  padding: 0.55rem 1.1rem;
+  min-height: 2.75rem;
+  cursor: pointer;
+}
+button:hover { filter: brightness(1.08); }
+button.secondaire {
+  color: var(--accent);
+  background: transparent;
+  border: 2px solid var(--accent);
+}
+button.secondaire:hover { background: var(--libre-fond); filter: none; }
+
+@media (min-width: 40rem) {
+  #form-decoupage, #form-appartenance, #form-chevauchement {
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    align-items: end;
+  }
+  #form-decoupage .actions, #form-appartenance .actions, #form-chevauchement .actions { align-self: end; }
+}
+
+/* ------------------------------------------------------------- erreurs et verdicts */
+
+.alerte { margin: 0.75rem 0 0; }
+.alerte:not(:empty) {
+  padding: 0.6rem 0.8rem;
+  background: var(--erreur-fond);
+  color: var(--erreur-texte);
+  border: 1px solid var(--erreur-bord);
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.verdict { margin: 0.75rem 0 0; padding: 0.55rem 0.8rem; border-radius: 8px; border: 1px solid var(--bord); font-weight: 600; }
+.verdict-oui { color: var(--ok); border-color: var(--ok); }
+.verdict-non { color: var(--ko); border-color: var(--ko); }
+
+.avertissement {
+  padding: 0.5rem 0.8rem;
+  border: 1px dashed var(--ko);
+  color: var(--ko);
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+[hidden] { display: none !important; }
+
+/* ------------------------------------------------------------- résultats */
+
+.resultat { margin-top: 1rem; }
+.resume { font-weight: 600; }
+
+.liste-def {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 1rem;
+  margin: 0;
+}
+.liste-def dt { color: var(--texte-doux); }
+.liste-def dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+
+.bits { display: flex; flex-wrap: wrap; align-items: baseline; font-size: 1.05rem; letter-spacing: 0.02em; }
+.bit { display: inline-block; min-width: 0.7em; text-align: center; }
+.bit-reseau { color: var(--reseau-bit); font-weight: 700; }
+.bit-hote { color: var(--hote-bit); }
+.bits-sep { padding: 0 0.15em; color: var(--texte-doux); }
+
+.liste-reseaux {
+  columns: 12rem;
+  column-gap: 1.5rem;
+  margin: 0.5rem 0 0;
+  padding-left: 2.5rem;
+}
+
+/* ------------------------------------------------------------- jauge d'occupation */
+
+.occupation { display: grid; gap: 0.25rem; }
+.jauge {
+  height: 1rem;
+  border: 1px solid var(--bord);
+  border-radius: 999px;
+  background: var(--libre-fond);
+  overflow: hidden;
+}
+.jauge-remplie { height: 100%; width: 0; background: var(--accent); }
+.taux { margin: 0; font-weight: 600; }
+
+/* ------------------------------------------------------------- carte de l'espace d'adresses */
+
+.carte-espace {
+  display: flex;
+  width: 100%;
+  height: 4.5rem;
+  border: 2px solid var(--bord);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--carte);
+}
+/* Géométrie proportionnelle : la largeur d'un bloc vient UNIQUEMENT de son style.width (pourcentage
+ * posé par app.js). Aucun padding horizontal, aucune bordure, aucune largeur minimale ni
+ * flex-shrink/flex-grow sur .bloc ; le séparateur est une ombre intérieure (hors flux) et le
+ * « rembourrage » des libellés est porté par les enfants, rognés par overflow: hidden. */
+.bloc {
+  flex: none;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.1rem;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  box-shadow: inset -2px 0 0 var(--carte);
+  white-space: nowrap;
+}
+.bloc:last-child { box-shadow: none; }
+.bloc-nom { font-weight: 700; overflow: hidden; text-overflow: ellipsis; padding: 0 0.35rem; }
+.bloc-detail { font-family: var(--mono); font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; padding: 0 0.35rem; }
+
+.alloue { color: #ffffff; }
+.couleur-0 { background: var(--c0); }
+.couleur-1 { background: var(--c1); }
+.couleur-2 { background: var(--c2); }
+.couleur-3 { background: var(--c3); }
+.couleur-4 { background: var(--c4); }
+.couleur-5 { background: var(--c5); }
+
+.libre {
+  color: var(--texte-doux);
+  background-color: var(--libre-fond);
+  background-image: repeating-linear-gradient(135deg, transparent 0 6px, var(--libre-trait) 6px 7px);
+}
+
+.legende { list-style: none; margin: 0.6rem 0 0; padding: 0; display: grid; gap: 0.25rem; font-size: 0.92rem; }
+.legende li { display: flex; align-items: center; gap: 0.5rem; min-width: 0; overflow-wrap: anywhere; }
+.pastille {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  border-radius: 3px;
+  border: 1px solid var(--bord);
+}
+
+/* ------------------------------------------------------------- tableaux */
+
+.tableau-defilant { overflow-x: auto; border: 1px solid var(--bord); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+th, td { padding: 0.45rem 0.7rem; text-align: left; border-bottom: 1px solid var(--bord); white-space: nowrap; }
+thead th { background: var(--libre-fond); }
+tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody th { font-weight: 600; }
+
+.pied { max-width: 64rem; margin: 0 auto; padding: 0 1rem 2rem; color: var(--texte-doux); font-size: 0.9rem; }
+
+@media (max-width: 30rem) {
+  .liste-def { grid-template-columns: 1fr; gap: 0; }
+  .liste-def dd { margin-bottom: 0.5rem; }
+  .carte { padding: 1rem; }
+  .entete h1 { font-size: 1.6rem; }
+  .actions button { flex: 1 1 100%; }
+  /* Carte visuelle : le détail des blocs étroits est dans la légende et le tableau */
+  .carte-espace { height: 3.25rem; }
+  .bloc { font-size: 0.7rem; }
+  .bloc-nom { padding: 0 0.25rem; }
+  .bloc-detail { display: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .jauge-remplie { transition: width 0.3s ease; }
+}
