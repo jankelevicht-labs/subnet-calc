@@ -5,6 +5,8 @@
   réponse ``application/json; charset=utf-8``). Entrée invalide → 400
   ``{"erreur": "<message en français>"}``, route inconnue → 404, méthode non
   prévue → 405, jamais de trace Python dans une réponse.
+* Exports : ``POST /api/export/csv|json|routeros`` (même corps que ``/api/vlsm``), réponse en
+  pièce jointe (``Content-Disposition: attachment``) générée par :mod:`netplan.export`.
 * Statiques : fichiers de ``netplan/static/`` uniquement (liste blanche
   d'extensions, aucune traversée, aucun listing de répertoire).
 * Toutes les réponses portent les en-têtes de sécurité (CSP stricte, nosniff,
@@ -20,7 +22,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote
 
-from . import calc
+from . import calc, export
 
 TAILLE_MAX_CORPS = 64 * 1024          # 64 Kio
 TAILLE_MAX_DRAIN = 1024 * 1024        # octets lus et jetés avant de répondre à un corps trop gros
@@ -81,6 +83,10 @@ ROUTES_API = {
     "/api/appartenance": (calc.appartenance, ("ip", "reseau"), ()),
     "/api/chevauchement": (calc.chevauchement, ("a", "b"), ()),
 }
+
+
+# Routes d'export : même corps que /api/vlsm ; réponse en pièce jointe générée par netplan.export.
+ROUTES_EXPORT = {f"/api/export/{nom}": nom for nom in export.FORMATS}
 
 
 def _rejeter_constante(nom):
@@ -184,6 +190,10 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 if methode != "POST":
                     raise ErreurRequete(405, MESSAGES_HTTP[405], (("Allow", "POST"),))
                 self._api(chemin)
+            elif chemin in ROUTES_EXPORT:
+                if methode != "POST":
+                    raise ErreurRequete(405, MESSAGES_HTTP[405], (("Allow", "POST"),))
+                self._exporter(ROUTES_EXPORT[chemin])
             elif chemin.startswith("/api/") or chemin == "/api":
                 raise ErreurRequete(404, MESSAGES_HTTP[404])
             else:
@@ -243,6 +253,18 @@ class Gestionnaire(BaseHTTPRequestHandler):
     def _api(self, chemin):
         donnees = decoder_json(self._lire_corps())
         self._envoyer_json(200, executer_route(chemin, donnees))
+
+    def _exporter(self, format_):
+        """Export d'un plan VLSM (même corps que /api/vlsm) en pièce jointe : csv, json ou routeros."""
+        donnees = decoder_json(self._lire_corps())
+        plan = executer_route("/api/vlsm", donnees)
+        fonction, extension, type_contenu = export.FORMATS[format_]
+        corps = fonction(plan).encode("utf-8")
+        nom = export.nom_fichier(plan, extension)
+        self._envoyer(200, corps, type_contenu, (
+            ("Content-Disposition", f'attachment; filename="{nom}"'),
+            ("Cache-Control", "no-store"),
+        ))
 
     # -- statiques ----------------------------------------------------------
 

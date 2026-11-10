@@ -248,21 +248,147 @@
     montrer(p, true);
   }
 
+  // ------------------------------------------------------------------ état du plan (lien et navigateur)
+
+  /**
+   * Le plan (réseau parent + texte des besoins, tels que saisis) est gardé :
+   *  - dans le fragment de l'URL : #reseau=<CIDR>&besoins=<texte>  (clés encodées par URLSearchParams) ;
+   *  - dans localStorage (clé « netplan.dernierPlan »), restauré en l'absence de fragment.
+   * Ces valeurs sont traitées comme n'importe quelle saisie : elles sont posées dans les champs
+   * (propriété value) puis envoyées à l'API ; elles ne sont jamais insérées comme HTML.
+   */
+  var CLE_PLAN = "netplan.dernierPlan";
+
+  function lireFragment() {
+    var hash = window.location.hash;
+    if (!hash || hash.length < 2) { return null; }
+    var params = new URLSearchParams(hash.slice(1));
+    if (!params.has("reseau") && !params.has("besoins")) { return null; }   // simple ancre de navigation
+    return { reseau: params.get("reseau"), besoins: params.get("besoins") };
+  }
+
+  function ecrireFragment(saisie) {
+    var params = new URLSearchParams();
+    params.set("reseau", saisie.reseau);
+    params.set("besoins", saisie.besoins);
+    try {
+      window.history.replaceState(null, "", "#" + params.toString());
+    } catch (e) { /* contexte restreint : le lien n'est pas mis à jour */ }
+  }
+
+  function lireStockage() {
+    try {
+      var brut = window.localStorage.getItem(CLE_PLAN);
+      if (!brut) { return null; }
+      var valeur = JSON.parse(brut);
+      if (valeur && typeof valeur.reseau === "string" && typeof valeur.besoins === "string") {
+        return { reseau: valeur.reseau, besoins: valeur.besoins };
+      }
+    } catch (e) { /* stockage absent ou contenu illisible : ignoré */ }
+    return null;
+  }
+
+  function ecrireStockage(saisie) {
+    try {
+      window.localStorage.setItem(CLE_PLAN, JSON.stringify({ reseau: saisie.reseau, besoins: saisie.besoins }));
+    } catch (e) { /* stockage indisponible ou plein : le plan n'est simplement pas mémorisé */ }
+  }
+
+  // ------------------------------------------------------------------ export (téléchargement)
+
+  var NOM_FICHIER_DEFAUT = "plan-netplan";
+
+  /** Nom de fichier proposé : celui de l'en-tête Content-Disposition, réduit à des caractères sûrs. */
+  function nomDepuisEntete(entete, format) {
+    var m = /filename="?([^";]+)"?/i.exec(entete || "");
+    var nom = m ? m[1].replace(/[^A-Za-z0-9._-]/g, "-") : "";
+    return nom || (NOM_FICHIER_DEFAUT + "." + format);
+  }
+
+  /**
+   * Demande le fichier à l'API (même corps que /api/vlsm) et le propose en téléchargement :
+   * le contenu vient intégralement de la réponse du serveur (Blob), le JS ne génère rien.
+   */
+  function telecharger(format, corps) {
+    return fetch("/api/export/" + format, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corps),
+      cache: "no-store",
+      credentials: "same-origin"
+    }).then(function (reponse) {
+      if (!reponse.ok) {
+        return reponse.json().then(function (c) {
+          throw new Error(c && typeof c.erreur === "string" ? c.erreur
+            : "Erreur inattendue du serveur (code " + reponse.status + ").");
+        }, function () {
+          throw new Error("Réponse illisible du serveur (code " + reponse.status + ").");
+        });
+      }
+      var nom = nomDepuisEntete(reponse.headers.get("Content-Disposition"), format);
+      return reponse.blob().then(function (blob) {
+        var url = URL.createObjectURL(blob);
+        var lien = document.createElement("a");
+        lien.href = url;
+        lien.download = nom;
+        document.body.appendChild(lien);
+        lien.click();
+        document.body.removeChild(lien);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      });
+    }, function () {
+      throw new Error(MESSAGE_RESEAU);
+    });
+  }
+
   // ------------------------------------------------------------------ câblage
 
   function demarrer() {
     // --- VLSM
     var zoneVlsm = nouvelleZone("erreur-vlsm");
+    var dernierCorps = null;       // corps du dernier plan affiché : base des exports
+    var derniereSaisie = null;     // saisies correspondantes (pour le lien et le navigateur)
+
     function planifier() {
       montrer($("resultat-vlsm"), false);
-      zoneVlsm.lancer(appeler("vlsm", {
-        parent: $("vlsm-parent").value,
-        besoins: analyserBesoins($("vlsm-besoins").value)
-      }), afficherVlsm);
+      var saisie = { reseau: $("vlsm-parent").value, besoins: $("vlsm-besoins").value };
+      var corps = { parent: saisie.reseau, besoins: analyserBesoins(saisie.besoins) };
+      zoneVlsm.lancer(appeler("vlsm", corps), function (rep) {
+        afficherVlsm(rep);
+        dernierCorps = corps;
+        derniereSaisie = saisie;
+        ecrireFragment(saisie);
+        ecrireStockage(saisie);
+      });
     }
     $("form-vlsm").addEventListener("submit", function (evt) {
       evt.preventDefault();
       planifier();
+    });
+
+    function appliquerSaisie(saisie) {
+      if (typeof saisie.reseau === "string") { $("vlsm-parent").value = saisie.reseau; }
+      if (typeof saisie.besoins === "string") { $("vlsm-besoins").value = saisie.besoins; }
+    }
+
+    // --- Export
+    var zoneExport = nouvelleZone("erreur-export");
+    [["csv", "exp-csv"], ["json", "exp-json"], ["routeros", "exp-routeros"]].forEach(function (paire) {
+      var format = paire[0];
+      $(paire[1]).addEventListener("click", function () {
+        if (dernierCorps === null) { return; }
+        zoneExport.lancer(telecharger(format, dernierCorps), function () {});
+      });
+    });
+    // Ouverture d'un lien partageable ou modification manuelle du fragment : le plan est recalculé.
+    window.addEventListener("hashchange", function () {
+      var etat = lireFragment();
+      if (etat) {
+        appliquerSaisie(etat);
+        planifier();
+      } else if (derniereSaisie) {
+        ecrireFragment(derniereSaisie);   // ancre de navigation interne : le lien partageable est conservé
+      }
     });
 
     // --- Calculatrice (mise à jour à la saisie, avec un léger délai)
@@ -340,7 +466,11 @@
       });
     });
 
-    // Résultats initiaux avec les valeurs d'exemple
+    // Plan initial : fragment de l'URL, sinon dernier plan du navigateur, sinon valeurs d'exemple
+    var initial = lireFragment() || lireStockage();
+    if (initial) { appliquerSaisie(initial); }
+
+    // Résultats initiaux
     calculer();
     planifier();
     decouper();

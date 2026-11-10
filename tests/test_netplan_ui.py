@@ -252,9 +252,13 @@ INTERDITS_JS = [
     r"innerHTML", r"outerHTML", r"insertAdjacentHTML", r"document\s*\.\s*write", r"\beval\s*\(",
     r"new\s+Function", r"\bFunction\s*\(", r"createContextualFragment", r"DOMParser", r"\.srcdoc",
     r"setTimeout\s*\(\s*[\"'`]", r"setInterval\s*\(\s*[\"'`]", r"document\s*\.\s*cookie",
-    r"localStorage", r"sessionStorage", r"XMLHttpRequest", r"WebSocket", r"importScripts",
+    r"sessionStorage", r"XMLHttpRequest", r"WebSocket", r"importScripts",
     r"\bimport\s*\(", r"setAttribute\s*\(\s*[\"'](style|on[a-z]+|href|src|srcdoc|action)[\"']",
-    r"\.(href|src|action)\s*=[^=]",
+    r"\.(src|action)\s*=[^=]",
+    # D4 : localStorage est désormais utilisé (dernier plan, thème) ; `.href =` n'est toléré que pour
+    # l'ancre de téléchargement (`lien.href = url;`, URL d'objet Blob créée par URL.createObjectURL).
+    r"(?<!\blien)\.href\s*=[^=]",
+    r"\.href\s*=\s*(?!\s|url;)",
 ]
 
 

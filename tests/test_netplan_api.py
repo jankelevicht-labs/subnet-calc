@@ -325,7 +325,8 @@ def test_route_api_inconnue_404(srv, methode):
     verifier_erreur_json(statut, entetes, json.loads(corps), 404)
 
 
-@pytest.mark.parametrize("chemin", ["/api", "/api/", "/api/cidr/", "/api/CIDR", "/api/export/csv", "/introuvable"])
+@pytest.mark.parametrize("chemin", ["/api", "/api/", "/api/cidr/", "/api/CIDR", "/api/export", "/api/export/", "/api/export/xml",
+                                    "/api/export/CSV", "/api/export/csv/", "/introuvable"])
 def test_chemins_inconnus_404(srv, chemin):
     statut, entetes, corps = requete(srv, "POST", chemin, "{}")
     verifier_erreur_json(statut, entetes, json.loads(corps), 404)
