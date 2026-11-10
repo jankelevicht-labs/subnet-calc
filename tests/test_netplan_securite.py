@@ -6,6 +6,7 @@ import http.client
 import io
 import json
 import re
+import select
 import socket
 import threading
 import time
@@ -197,8 +198,9 @@ def test_s3_drainage_borne_en_octets():
 
 
 def test_s3_drainage_borne_en_duree_totale(monkeypatch):
-    """Un client qui goutte-à-goutte (chaque lecture < délai d'inactivité) ne dépasse pas 1 s au total."""
-    assert server.DUREE_MAX_DRAIN <= 1.0
+    """Un client qui goutte-à-goutte (chaque lecture < délai d'inactivité) ne dépasse pas l'échéance
+    absolue, qui laisse une marge nette sous la borne de fermeture de 1 s."""
+    assert server.DUREE_MAX_DRAIN <= 0.5
 
     class Goutte:
         def read1(self, n):
@@ -210,8 +212,26 @@ def test_s3_drainage_borne_en_duree_totale(monkeypatch):
     debut = time.monotonic()
     jetes = h._jeter_corps(10_000_000)
     duree = time.monotonic() - debut
-    assert duree < 1.0 + 0.3
+    assert duree < 0.5 + 0.1
     assert 0 < jetes < 100
+
+
+def test_s3_echeance_de_drainage_calculee_depuis_les_en_tetes():
+    """L'échéance part de la réception des en-têtes, pas du début du drainage : si 0,3 s se sont
+    déjà écoulées (traitement, envoi du 400), il ne reste qu'environ 0,2 s."""
+    class Goutte:
+        def read1(self, n):
+            time.sleep(0.02)
+            return b"x"
+        read = read1
+
+    h = gestionnaire_factice(10_000_000, Goutte())
+    h._instant_entetes = time.monotonic() - 0.3
+    debut = time.monotonic()
+    h._jeter_corps(10_000_000)
+    assert time.monotonic() - debut < server.DUREE_MAX_DRAIN - 0.3 + 0.1
+    h._instant_entetes = time.monotonic() - 5.0          # échéance déjà dépassée : aucune lecture
+    assert h._jeter_corps(10_000_000) == 0
 
 
 def _en_tetes_seuls(srv, longueur, chemin="/api/cidr"):
@@ -243,7 +263,8 @@ def test_s3_socket_en_tetes_seuls_400_en_moins_de_200_ms(srv, longueur):
 
 def test_s3_socket_corps_envoye_ensuite_le_serveur_ferme_dans_la_seconde(srv):
     """Le client continue d'envoyer 2 Mio : le serveur répond tout de suite, jette ≤ 1 Mio
-    en ≤ ~1 s puis ferme."""
+    puis ferme, au plus 1,0 s après l'envoi des en-têtes (borne stricte)."""
+    t0 = time.monotonic()
     donnees, duree, sock = _en_tetes_seuls(srv, 10_000_000)
     assert donnees.startswith(b"HTTP/1.0 400") and duree < 0.2
     debut = time.monotonic()
@@ -259,8 +280,52 @@ def test_s3_socket_corps_envoye_ensuite_le_serveur_ferme_dans_la_seconde(srv):
         pass                                   # le serveur a fermé : attendu
     finally:
         sock.close()
-    assert time.monotonic() - debut < 2.0
+    assert time.monotonic() - t0 <= 1.0
     assert envoyes <= 8 * 1024 * 1024 + 65536
+
+
+def test_s3_socket_goutte_a_goutte_400_rapide_et_fermeture_en_une_seconde_stricte(srv):
+    """Borne STRICTE, sans tolérance : en-têtes avec Content-Length: 10000000 puis 1 octet / 50 ms
+    sans demi-fermeture → 400 JSON français en < 0,2 s ET fermeture côté serveur constatée en
+    ≤ 1,0 s après l'envoi des en-têtes."""
+    sock = socket.create_connection(srv, timeout=5)
+    try:
+        debut = time.monotonic()
+        sock.sendall(b"POST /api/cidr HTTP/1.1\r\nHost: localhost\r\nContent-Length: 10000000\r\n\r\n")
+        donnees = b""
+        while b"\r\n\r\n" not in donnees or b"}" not in donnees:
+            morceau = sock.recv(8192)
+            assert morceau, donnees
+            donnees += morceau
+        duree_reponse = time.monotonic() - debut
+        assert donnees.startswith(b"HTTP/1.0 400"), donnees
+        assert duree_reponse < 0.2, duree_reponse
+        corps = donnees.split(b"\r\n\r\n", 1)[1]
+        assert "volumineux" in json.loads(corps.decode("utf-8"))["erreur"]
+
+        limite = debut + 3.0                      # garde-fou du test, pas la borne vérifiée
+        prochain = time.monotonic()
+        fin = None
+        while fin is None and time.monotonic() < limite:
+            if time.monotonic() >= prochain:
+                try:
+                    sock.sendall(b"x")
+                except OSError:
+                    fin = time.monotonic()
+                    break
+                prochain += 0.05
+            attente = max(0, min(prochain, limite) - time.monotonic())
+            if select.select([sock], [], [], attente)[0]:
+                try:
+                    vide = sock.recv(8192) == b""
+                except ConnectionResetError:
+                    vide = True
+                if vide:
+                    fin = time.monotonic()
+        assert fin is not None, "le serveur n'a pas fermé la connexion"
+        assert fin - debut <= 1.0, fin - debut
+    finally:
+        sock.close()
 
 
 def test_s3_corps_valide_juste_sous_la_limite_inchange(srv):

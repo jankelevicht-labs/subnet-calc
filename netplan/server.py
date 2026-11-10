@@ -28,7 +28,8 @@ from . import calc, export
 TAILLE_MAX_CORPS = 64 * 1024          # 64 Kio
 TAILLE_MAX_DRAIN = 1024 * 1024        # octets lus et jetés avant de répondre à un corps trop gros
 DELAI_SOCKET = 10                     # secondes (client lent / connexion muette)
-DUREE_MAX_DRAIN = 1.0                 # secondes au total (échéance absolue) pour jeter un corps trop gros
+DUREE_MAX_DRAIN = 0.5                 # secondes (échéance absolue depuis la réception des en-têtes) pour jeter
+                                      # un corps trop gros : marge sous la borne de fermeture totale de 1 s
 DOSSIER_STATIQUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 TYPES_STATIQUES = {
@@ -163,6 +164,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
     def version_string(self):
         return self.server_version
 
+    def parse_request(self):
+        """Note l'instant de réception des en-têtes : origine de l'échéance de drainage."""
+        ok = super().parse_request()
+        self._instant_entetes = time.monotonic()
+        return ok
+
     def _envoyer(self, statut, corps, type_contenu, entetes=(), avec_corps=True):
         if self.request_version == "HTTP/0.9":      # http.server n'enverrait alors aucun en-tête
             self.request_version = "HTTP/1.0"
@@ -278,10 +285,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
         provoquerait un RST qui peut effacer la réponse côté client).
 
         Borné en octets (``TAILLE_MAX_DRAIN``) et en durée TOTALE (``DUREE_MAX_DRAIN``, échéance
-        absolue, pas un simple délai d'inactivité). Renvoie le nombre d'octets jetés."""
+        absolue calculée depuis la réception des en-têtes, pas depuis l'envoi du 400 ni comme simple
+        délai d'inactivité) : la fermeture reste ainsi sous 1 s malgré le traitement et l'envoi.
+        Renvoie le nombre d'octets jetés."""
         restant = min(longueur, TAILLE_MAX_DRAIN)
         jetes = 0
-        echeance = time.monotonic() + DUREE_MAX_DRAIN
+        echeance = getattr(self, "_instant_entetes", time.monotonic()) + DUREE_MAX_DRAIN
         lire = getattr(self.rfile, "read1", self.rfile.read)   # read1 : au plus une lecture système
         try:
             while restant > 0:
