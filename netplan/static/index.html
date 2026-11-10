@@ -3,12 +3,190 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NetPlan Studio</title>
+  <meta name="color-scheme" content="light dark">
+  <title>NetPlan Studio – Plan d'adressage IPv4</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
 </head>
 <body>
-  <h1>NetPlan Studio</h1>
-  <p>Atelier de plan d'adressage IPv4. L'interface complète arrive prochainement ; l'API JSON est déjà disponible
-  (<code>POST /api/cidr</code>, <code>/api/vlsm</code>, <code>/api/decoupage</code>,
-  <code>/api/appartenance</code>, <code>/api/chevauchement</code>).</p>
+  <header class="entete">
+    <h1>NetPlan Studio</h1>
+    <p class="sous-titre">Atelier de plan d'adressage IPv4 : planificateur VLSM, calculatrice CIDR, découpage et vérifications.</p>
+    <nav aria-label="Sections">
+      <ul class="navigation">
+        <li><a href="#section-vlsm">Planificateur VLSM</a></li>
+        <li><a href="#section-calculatrice">Calculatrice CIDR</a></li>
+        <li><a href="#section-decoupage">Découpage</a></li>
+        <li><a href="#section-verifications">Vérifications</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ============================ Planificateur VLSM ============================ -->
+    <section id="section-vlsm" class="carte" aria-labelledby="titre-vlsm">
+      <h2 id="titre-vlsm">Planificateur VLSM</h2>
+      <p class="aide">Saisissez le réseau parent puis vos besoins, séparés par des virgules, des points-virgules
+        ou des retours à la ligne : le nom, puis le nombre d'hôtes (par exemple
+        <code>Voix 50, Data 120, Wi-Fi invités 200, Admin 10</code>). Les besoins sont alloués du plus grand
+        au plus petit, sans chevauchement.</p>
+      <form id="form-vlsm" autocomplete="off" novalidate>
+        <div class="champ">
+          <label for="vlsm-parent">Réseau parent (CIDR)</label>
+          <input id="vlsm-parent" name="parent" type="text" value="192.168.0.0/22" placeholder="192.168.0.0/22"
+                 spellcheck="false" required>
+        </div>
+        <div class="champ">
+          <label for="vlsm-besoins">Besoins (nom et nombre d'hôtes)</label>
+          <textarea id="vlsm-besoins" name="besoins" rows="3" spellcheck="false"
+                    placeholder="Voix 50, Data 120, Wi-Fi invités 200, Admin 10" required>Voix 50, Data 120, Wi-Fi invités 200, Admin 10</textarea>
+        </div>
+        <div class="actions"><button type="submit" id="vlsm-envoyer">Planifier</button></div>
+      </form>
+      <div id="erreur-vlsm" class="alerte" role="alert"></div>
+
+      <div id="resultat-vlsm" class="resultat" hidden>
+        <h3>Taux d'occupation</h3>
+        <div class="occupation">
+          <div id="vlsm-jauge" class="jauge" role="progressbar" aria-label="Taux d'occupation de l'espace d'adresses"
+               aria-valuemin="0" aria-valuemax="100"><div id="vlsm-jauge-remplie" class="jauge-remplie"></div></div>
+          <p id="vlsm-taux" class="taux"></p>
+        </div>
+
+        <h3>Carte de l'espace d'adresses</h3>
+        <p id="vlsm-legende-parent" class="aide"></p>
+        <div id="vlsm-carte" class="carte-espace" role="group" aria-label="Carte proportionnelle de l'espace d'adresses"></div>
+        <ul id="vlsm-legende" class="legende"></ul>
+
+        <h3>Tableau d'allocation</h3>
+        <div class="tableau-defilant" role="region" aria-label="Tableau d'allocation VLSM" tabindex="0">
+          <table id="vlsm-tableau">
+            <thead>
+              <tr>
+                <th scope="col">Nom</th>
+                <th scope="col" class="num">Hôtes demandés</th>
+                <th scope="col">Réseau</th>
+                <th scope="col">Masque</th>
+                <th scope="col">Plage d'hôtes</th>
+                <th scope="col">Broadcast</th>
+                <th scope="col" class="num">Capacité</th>
+              </tr>
+            </thead>
+            <tbody id="vlsm-corps"></tbody>
+          </table>
+        </div>
+        <h3>Blocs libres</h3>
+        <p id="vlsm-libres" class="aide"></p>
+      </div>
+    </section>
+
+    <!-- ============================ Calculatrice CIDR ============================ -->
+    <section id="section-calculatrice" class="carte" aria-labelledby="titre-calculatrice">
+      <h2 id="titre-calculatrice">Calculatrice CIDR</h2>
+      <p class="aide">Le résultat se met à jour pendant la saisie. Les bits d'hôte sont acceptés
+        (<code>192.168.1.10/24</code>).</p>
+      <form id="form-calculatrice" autocomplete="off" novalidate>
+        <div class="champ">
+          <label for="calc-cidr">Adresse et préfixe (CIDR)</label>
+          <input id="calc-cidr" name="cidr" type="text" value="192.168.1.10/24" placeholder="192.168.1.10/24"
+                 spellcheck="false" required>
+        </div>
+      </form>
+      <div id="erreur-calculatrice" class="alerte" role="alert"></div>
+      <div id="resultat-calculatrice" class="resultat" hidden>
+        <dl id="calc-liste" class="liste-def">
+          <dt>Adresse saisie</dt><dd id="calc-adresse"></dd>
+          <dt>Réseau</dt><dd id="calc-reseau"></dd>
+          <dt>Broadcast</dt><dd id="calc-broadcast"></dd>
+          <dt>Masque</dt><dd id="calc-masque"></dd>
+          <dt>Préfixe</dt><dd id="calc-prefixe"></dd>
+          <dt>Plage d'hôtes</dt><dd id="calc-plage"></dd>
+          <dt>Nombre d'hôtes</dt><dd id="calc-nb-hotes"></dd>
+        </dl>
+        <h3>Vue binaire</h3>
+        <p class="aide">Bits de réseau en couleur pleine, bits d'hôte en couleur atténuée.</p>
+        <dl class="liste-def binaire">
+          <dt>Adresse</dt><dd id="calc-bin-adresse" class="bits"></dd>
+          <dt>Masque</dt><dd id="calc-bin-masque" class="bits"></dd>
+        </dl>
+      </div>
+    </section>
+
+    <!-- ============================ Découpage ============================ -->
+    <section id="section-decoupage" class="carte" aria-labelledby="titre-decoupage">
+      <h2 id="titre-decoupage">Découpage en sous-réseaux</h2>
+      <p class="aide">Découpez un réseau en sous-réseaux égaux : soit en N parts (arrondi à la puissance de 2
+        supérieure), soit par préfixe cible.</p>
+      <form id="form-decoupage" autocomplete="off" novalidate>
+        <div class="champ">
+          <label for="dec-reseau">Réseau (CIDR)</label>
+          <input id="dec-reseau" name="reseau" type="text" value="10.0.0.0/16" placeholder="10.0.0.0/16"
+                 spellcheck="false" required>
+        </div>
+        <div class="champ">
+          <label for="dec-mode">Découper</label>
+          <select id="dec-mode" name="mode">
+            <option value="n" selected>en N sous-réseaux</option>
+            <option value="prefixe">par préfixe cible</option>
+          </select>
+        </div>
+        <div class="champ">
+          <label for="dec-valeur" id="dec-valeur-libelle">Nombre de sous-réseaux (N)</label>
+          <input id="dec-valeur" name="valeur" type="text" inputmode="numeric" value="8" placeholder="8"
+                 spellcheck="false" required>
+        </div>
+        <div class="actions"><button type="submit" id="dec-envoyer">Découper</button></div>
+      </form>
+      <div id="erreur-decoupage" class="alerte" role="alert"></div>
+      <div id="resultat-decoupage" class="resultat" hidden>
+        <p id="dec-resume" class="resume"></p>
+        <p id="dec-tronque" class="avertissement" hidden></p>
+        <ol id="dec-liste" class="liste-reseaux"></ol>
+      </div>
+    </section>
+
+    <!-- ============================ Vérifications ============================ -->
+    <section id="section-verifications" class="carte" aria-labelledby="titre-verifications">
+      <h2 id="titre-verifications">Vérifications</h2>
+
+      <h3>Appartenance d'une adresse à un réseau</h3>
+      <form id="form-appartenance" autocomplete="off" novalidate>
+        <div class="champ">
+          <label for="app-ip">Adresse IP</label>
+          <input id="app-ip" name="ip" type="text" value="192.168.1.77" placeholder="192.168.1.77"
+                 spellcheck="false" required>
+        </div>
+        <div class="champ">
+          <label for="app-reseau">Réseau (CIDR)</label>
+          <input id="app-reseau" name="reseau" type="text" value="192.168.1.0/24" placeholder="192.168.1.0/24"
+                 spellcheck="false" required>
+        </div>
+        <div class="actions"><button type="submit" id="app-envoyer">Vérifier l'appartenance</button></div>
+      </form>
+      <div id="erreur-appartenance" class="alerte" role="alert"></div>
+      <p id="resultat-appartenance" class="verdict" hidden></p>
+
+      <h3>Chevauchement de deux réseaux</h3>
+      <form id="form-chevauchement" autocomplete="off" novalidate>
+        <div class="champ">
+          <label for="chev-a">Réseau A (CIDR)</label>
+          <input id="chev-a" name="a" type="text" value="10.0.0.0/16" placeholder="10.0.0.0/16"
+                 spellcheck="false" required>
+        </div>
+        <div class="champ">
+          <label for="chev-b">Réseau B (CIDR)</label>
+          <input id="chev-b" name="b" type="text" value="10.0.5.0/24" placeholder="10.0.5.0/24"
+                 spellcheck="false" required>
+        </div>
+        <div class="actions"><button type="submit" id="chev-envoyer">Vérifier le chevauchement</button></div>
+      </form>
+      <div id="erreur-chevauchement" class="alerte" role="alert"></div>
+      <p id="resultat-chevauchement" class="verdict" hidden></p>
+    </section>
+  </main>
+
+  <footer class="pied">
+    <p>NetPlan Studio : tous les calculs sont effectués par le serveur local ; aucune ressource externe n'est chargée.</p>
+  </footer>
 </body>
 </html>
