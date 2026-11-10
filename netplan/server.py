@@ -109,7 +109,32 @@ def decoder_json(octets):
         raise ErreurRequete(400, "JSON mal formé : le corps de la requête n'est pas un JSON valide.") from None
     if not isinstance(donnees, dict):
         raise ErreurRequete(400, "JSON invalide : un objet {\"champ\": valeur} est attendu.")
+    if _contient_surrogate(donnees):
+        raise ErreurRequete(
+            400, "Texte invalide : le JSON contient un caractère Unicode isolé (surrogate) "
+                 "qui ne peut pas être encodé en UTF-8.")
     return donnees
+
+
+def _contient_surrogate(donnees):
+    """Vrai si une clé ou une valeur texte contient un surrogate Unicode isolé (U+D800 à U+DFFF).
+
+    ``json.loads`` accepte ``"\\ud800"`` ; ce texte ne s'encode pas en UTF-8 et ferait échouer
+    l'envoi de la réponse. Parcours itératif (pas de récursion Python)."""
+    pile = [donnees]
+    while pile:
+        valeur = pile.pop()
+        if isinstance(valeur, str):
+            try:
+                valeur.encode("utf-8")
+            except UnicodeEncodeError:
+                return True
+        elif isinstance(valeur, dict):
+            pile.extend(valeur.keys())
+            pile.extend(valeur.values())
+        elif isinstance(valeur, list):
+            pile.extend(valeur)
+    return False
 
 
 def executer_route(chemin, donnees):
@@ -153,7 +178,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
         self.close_connection = True
 
     def _envoyer_json(self, statut, donnees, entetes=(), avec_corps=True):
-        corps = json.dumps(donnees, ensure_ascii=False).encode("utf-8")
+        try:
+            corps = json.dumps(donnees, ensure_ascii=False).encode("utf-8")
+        except UnicodeEncodeError:
+            # Défense en profondeur : une réponse doit toujours être encodable (surrogate isolé
+            # échappé en \udXXX plutôt que connexion fermée sans réponse).
+            corps = json.dumps(donnees, ensure_ascii=True).encode("ascii")
         self._envoyer(statut, corps, "application/json; charset=utf-8",
                       (("Cache-Control", "no-store"),) + tuple(entetes), avec_corps)
 

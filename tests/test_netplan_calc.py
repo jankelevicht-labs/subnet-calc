@@ -39,7 +39,7 @@ def test_cidr_info_24():
     r = cidr_info("192.168.1.0/24")
     assert r == {
         "adresse": "192.168.1.0",
-        "reseau": "192.168.1.0/24",
+        "reseau": "192.168.1.0",
         "broadcast": "192.168.1.255",
         "masque": "255.255.255.0",
         "prefixe": 24,
@@ -54,7 +54,7 @@ def test_cidr_info_24():
 def test_cidr_info_bits_hote_acceptes():
     r = cidr_info("192.168.1.10/24")
     assert r["adresse"] == "192.168.1.10"
-    assert r["reseau"] == "192.168.1.0/24"
+    assert r["reseau"] == "192.168.1.0" and r["prefixe"] == 24
     assert r["binaire_adresse"] == "11000000.10101000.00000001.00001010"
 
 
@@ -86,7 +86,7 @@ def test_cidr_info_0():
 
 
 def test_cidr_info_espaces_tolere():
-    assert cidr_info("  10.0.0.0/8 ")["reseau"] == "10.0.0.0/8"
+    assert cidr_info("  10.0.0.0/8 ")["reseau"] == "10.0.0.0"
 
 
 @pytest.mark.parametrize("valeur", ["", "   ", "abc", "300.1.1.0/24", "10.0.0/24", "10.0.0.0", None, 24,

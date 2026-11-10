@@ -271,24 +271,30 @@ button.secondaire:hover { background: var(--libre-fond); filter: none; }
   overflow: hidden;
   background: var(--carte);
 }
+/* Géométrie proportionnelle : la largeur d'un bloc vient UNIQUEMENT de son style.width (pourcentage
+ * posé par app.js). Aucun padding horizontal, aucune bordure, aucune largeur minimale ni
+ * flex-shrink/flex-grow sur .bloc ; le séparateur est une ombre intérieure (hors flux) et le
+ * « rembourrage » des libellés est porté par les enfants, rognés par overflow: hidden. */
 .bloc {
-  flex: 0 1 auto;
-  min-width: 3px;
+  flex: none;
+  box-sizing: border-box;
+  min-width: 0;
   height: 100%;
   overflow: hidden;
-  padding: 0.25rem 0.35rem;
+  padding: 0;
+  border: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 0.1rem;
   font-size: 0.8rem;
   line-height: 1.2;
-  border-right: 2px solid var(--carte);
+  box-shadow: inset -2px 0 0 var(--carte);
   white-space: nowrap;
 }
-.bloc:last-child { border-right: 0; }
-.bloc-nom { font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
-.bloc-detail { font-family: var(--mono); font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; }
+.bloc:last-child { box-shadow: none; }
+.bloc-nom { font-weight: 700; overflow: hidden; text-overflow: ellipsis; padding: 0 0.35rem; }
+.bloc-detail { font-family: var(--mono); font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; padding: 0 0.35rem; }
 
 .alloue { color: #ffffff; }
 .couleur-0 { background: var(--c0); }
@@ -335,7 +341,8 @@ tbody th { font-weight: 600; }
   .actions button { flex: 1 1 100%; }
   /* Carte visuelle : le détail des blocs étroits est dans la légende et le tableau */
   .carte-espace { height: 3.25rem; }
-  .bloc { padding: 0.2rem 0.25rem; font-size: 0.7rem; }
+  .bloc { font-size: 0.7rem; }
+  .bloc-nom { padding: 0 0.25rem; }
   .bloc-detail { display: none; }
 }
 

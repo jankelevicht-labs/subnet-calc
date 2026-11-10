@@ -207,7 +207,7 @@
 
   function afficherCidr(rep) {
     fixer("calc-adresse", rep.adresse);
-    fixer("calc-reseau", rep.reseau);
+    fixer("calc-reseau", rep.reseau + "/" + rep.prefixe);
     fixer("calc-broadcast", rep.broadcast);
     fixer("calc-masque", rep.masque);
     fixer("calc-prefixe", "/" + rep.prefixe);

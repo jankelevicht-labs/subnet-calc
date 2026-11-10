@@ -65,7 +65,15 @@ def _reseau(valeur, nom="réseau"):
     if not (pref_txt.isascii() and pref_txt.isdigit()):
         raise NetplanError(
             f"Préfixe incohérent dans « {texte} » : « {pref_txt} » n'est pas un entier entre 0 et 32.")
-    prefixe = int(pref_txt)
+    # Garde-fou avant int() : Python refuse (ValueError natif, en anglais) de convertir plus de
+    # 4300 chiffres. Un préfixe valide tient en 2 chiffres (zéros initiaux tolérés) : au-delà de
+    # 6 chiffres significatifs on rejette sans recopier le texte saisi.
+    significatifs = pref_txt.lstrip("0")
+    if len(significatifs) > 6:
+        raise NetplanError(
+            f"Préfixe incohérent : le préfixe saisi compte {len(pref_txt)} chiffres, "
+            "attendu un entier entre 0 et 32.")
+    prefixe = int(significatifs or "0")
     if prefixe > 32:
         raise NetplanError(f"Préfixe incohérent dans « {texte} » : /{prefixe} dépasse /32.")
     return adresse, ipaddress.IPv4Network((adresse, prefixe), strict=False)
@@ -115,7 +123,8 @@ def cidr_info(cidr):
     hôte = adresse réseau, dernier hôte = broadcast) ; ``/32`` → 1 hôte
     (premier = dernier = réseau = broadcast).
 
-    Renvoie : adresse, reseau (CIDR), broadcast, masque, prefixe, premier_hote,
+    Renvoie : adresse, reseau (adresse réseau sans préfixe,
+    ex. 192.168.1.0 ; le préfixe est dans ``prefixe``), broadcast, masque, prefixe, premier_hote,
     dernier_hote, nb_hotes, binaire_adresse, binaire_masque (4 octets séparés
     par des points).
     """
@@ -123,7 +132,7 @@ def cidr_info(cidr):
     premier, dernier, nb = _hotes(reseau)
     return {
         "adresse": str(adresse),
-        "reseau": str(reseau),
+        "reseau": str(reseau.network_address),
         "broadcast": str(reseau.broadcast_address),
         "masque": str(reseau.netmask),
         "prefixe": reseau.prefixlen,

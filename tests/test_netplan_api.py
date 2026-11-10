@@ -133,7 +133,7 @@ def test_cidr(srv):
     assert statut == 200
     assert entetes["content-type"] == "application/json; charset=utf-8"
     assert donnees == calc.cidr_info("192.168.1.10/24")
-    assert donnees["reseau"] == "192.168.1.0/24" and donnees["nb_hotes"] == 254
+    assert donnees["reseau"] == "192.168.1.0" and donnees["prefixe"] == 24 and donnees["nb_hotes"] == 254
     verifier_entetes_securite(entetes)
 
 
